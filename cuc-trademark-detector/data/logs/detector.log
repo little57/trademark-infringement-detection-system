@@ -1,0 +1,122 @@
+2026-07-14 10:50:46,431 [DEBUG] Using proactor: IocpProactor
+2026-07-14 10:51:03,099 [INFO] 开始等待登录...
+2026-07-14 10:51:03,099 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:03,112 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:06,125 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:06,134 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:09,151 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:09,158 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:12,162 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:12,185 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:15,197 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:15,209 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:18,213 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:18,221 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:21,223 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:21,232 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:24,238 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:24,244 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:27,250 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:27,257 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:30,273 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:30,279 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:33,290 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:33,297 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:36,308 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:36,317 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:39,323 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:39,331 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:42,332 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:42,341 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:45,353 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:45,359 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:48,366 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:48,374 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:51,387 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:51:51,395 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:51:54,409 [INFO] 用户终止等待登录
+2026-07-14 10:55:48,230 [DEBUG] Using proactor: IocpProactor
+2026-07-14 10:56:03,393 [INFO] 开始等待登录...
+2026-07-14 10:56:03,393 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:03,405 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:06,421 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:06,431 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:09,438 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:09,445 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:12,456 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:12,466 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:15,474 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:15,482 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:18,489 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:18,497 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:56:21,499 [DEBUG] 等待登录中 - 当前URL: https://www.taobao.com/
+2026-07-14 10:56:21,510 [DEBUG] 登录状态检查 - logged_in=False, has_login_modal=False
+2026-07-14 10:59:11,964 [DEBUG] Using proactor: IocpProactor
+2026-07-14 10:59:47,191 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 10:59:47,366 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 10:59:48,367 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 10:59:48,526 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 10:59:49,527 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 10:59:49,738 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:25,415 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:25,574 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:26,576 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:26,755 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:27,756 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:27,931 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:41,221 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:41,381 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:42,382 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:42,522 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:43,523 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:43,676 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:00:58,815 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:00:59,014 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:01:00,016 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:01:00,166 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:01:01,169 [DEBUG] Starting new HTTPS connection (1): api.deepseek.com:443
+2026-07-14 11:01:01,349 [DEBUG] https://api.deepseek.com:443 "POST /v1/chat/completions HTTP/11" 401 65
+2026-07-14 11:01:08,850 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,850 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,859 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,859 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,866 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,866 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,876 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,876 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,884 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,884 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,892 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,893 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,900 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,900 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,907 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,908 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,915 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,915 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,923 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,923 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,931 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,931 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,957 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,957 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:08,977 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:08,977 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,000 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,000 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,009 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,009 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,022 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,023 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,030 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,030 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,037 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,037 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,047 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,047 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,065 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,065 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,083 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,083 [DEBUG] STREAM b'IDAT' 41 4096
+2026-07-14 11:01:09,104 [DEBUG] STREAM b'IHDR' 16 13
+2026-07-14 11:01:09,105 [DEBUG] STREAM b'IDAT' 41 4096
