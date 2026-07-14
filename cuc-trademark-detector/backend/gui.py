@@ -404,22 +404,23 @@ class App:
             if r and r.get("ai_result"):
                 ai = r["ai_result"]
                 ai_inf = ai.get("is_infringement")
-                ai_conf = ai.get("confidence", "")
+                conf_score = ai.get("confidence_score", 0)
                 ai_sug = ai.get("suggestion", "")
 
                 # 在商品名称后追加AI标记
                 current_vals = list(self.tree.item(item, "values"))
                 name = current_vals[1] if len(current_vals) > 1 else ""
                 if ai_inf is True:
-                    marker = f" [🤖侵权-{ai_conf}]"
+                    marker = f" [🤖侵权-{conf_score}分]"
                 elif ai_inf is False:
-                    marker = f" [🤖非侵权-{ai_conf}]"
+                    marker = f" [🤖非侵权-{conf_score}分]"
                 else:
-                    marker = f" [🤖未知-{ai_conf}]"
+                    marker = f" [🤖未知-{conf_score}分]"
 
                 if len(current_vals) > 1:
                     current_vals[1] = (name + marker)[:80]
                     self.tree.item(item, values=tuple(current_vals))
+
 
         # 更新统计信息
         ai_summary = f"AI验证: {ai_infringing}侵权 / {ai_clean}非侵权 / {ai_unknown}未知"
@@ -459,7 +460,7 @@ class App:
             ws = wb.active
             ws.title = "侵权检测报告(AI验证)"
 
-            headers = ["序号","商品名称","商品截图","商品URL","记录时间","价格","是否侵权","AI验证","AI置信度","AI建议"]
+            headers = ["序号","商品名称","商品截图","商品URL","记录时间","价格","是否侵权","AI侵权校验","AI置信度","AI建议"]
             hf = Font(bold=True, size=11, color="FFFFFF")
             hb = PatternFill("solid", fgColor="4472C4")
             ha = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -478,10 +479,9 @@ class App:
             ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=10)
             note_text = (
                 "【AI侵权判断标准】"
-                " 构成侵权：①标题含校名/缩写(CUC/中传/广院) ②商品属侵权高发类别(服装/文具/饰品等) "
-                "③暗示官方关联(官方/正版/授权/纪念/周边/文创) ④价格异常偏低 ⑤卖家非官方店铺。"
-                " 不构成侵权：①合理使用(如考研资料) ②二手闲置 ③官方店铺 ④正规书籍教材。"
-                " 置信度：高=多项特征吻合，中=部分特征吻合，低=仅个别特征吻合。"
+                " 评分制(满分100分)：①商标使用(30分)含校名/缩写/CUC ②商品类别(25分)服装/文具/饰品等周边类 "
+                "③官方关联暗示(20分)官方/正版/授权/纪念/周边/文创 ④价格异常(15分)低价高分 ⑤卖家非官方(10分)非北京商家高分。"
+                " ≥80分确认侵权，60-79分酌情复核，<60分建议复核。核心原则：非书籍教材类商品含校名+周边类别=侵权。"
             )
             c_note = ws.cell(row=note_row, column=1, value=note_text)
             c_note.font = Font(color="555555", size=9, italic=True)
@@ -531,24 +531,47 @@ class App:
                 c7.border=thin; c7.alignment=Alignment(vertical="center",wrap_text=True); c7.font = red
 
 
-                # AI验证结果
+                # AI验证结果 - 精确到每一分
                 ai = r.get("ai_result", {})
                 if ai:
                     ai_inf = ai.get("is_infringement")
-                    ai_conf = ai.get("confidence", "")
-                    ai_sug = ai.get("suggestion", "")
+                    conf_score = ai.get("confidence_score", 0)
+                    ai_sug = ai.get("suggestion", "建议复核")
 
-                    ai_text = "是" if ai_inf is True else ("否" if ai_inf is False else "未知")
-                    ai_font = red if ai_inf is True else (green if ai_inf is False else orange)
+                    # AI侵权校验列：只填"是"或"否"
+                    if ai_inf is True:
+                        ai_text = "是"
+                    elif ai_inf is False:
+                        ai_text = "否"
+                    else:
+                        ai_text = "建议复核"
+
+                    # 根据分数决定建议和颜色
+                    if ai_inf is True:
+                        if conf_score >= 80:
+                            ai_sug = "确认侵权"
+                            ai_font = Font(color="FF0000", bold=True)
+                        elif conf_score >= 60:
+                            ai_sug = "酌情复核"
+                            ai_font = Font(color="FF0000", bold=True)
+                        else:
+                            ai_sug = "建议复核"
+                            ai_font = Font(color="FF0000", bold=True)
+                    elif ai_inf is False:
+                        ai_font = green
+                    else:
+                        ai_font = orange
 
                     c8 = ws.cell(row=ri, column=8, value=ai_text)
                     c8.border=thin; c8.alignment=Alignment(horizontal="center", vertical="center", wrap_text=True); c8.font = ai_font
 
-                    c9 = ws.cell(row=ri, column=9, value=ai_conf)
+                    c9 = ws.cell(row=ri, column=9, value=f"{conf_score}%")
                     c9.border=thin; c9.alignment=Alignment(horizontal="center", vertical="center", wrap_text=True); c9.font = ai_font
 
                     c10 = ws.cell(row=ri, column=10, value=ai_sug)
                     c10.border=thin; c10.alignment=Alignment(vertical="center", wrap_text=True); c10.font = ai_font
+
+
 
             wb.save(str(excel_path))
             self._last_excel = str(excel_path)

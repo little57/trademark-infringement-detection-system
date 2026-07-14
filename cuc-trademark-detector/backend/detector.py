@@ -234,19 +234,23 @@ EXTRACT_ITEMS_JS = """
     // 辅助函数：从文本中提取价格，只保留2位小数
     function extractPrice(text) {
         if (!text) return '';
-        // 匹配价格模式：数字开头，可能带小数点
-        const matches = text.match(/(\\d+\\.?\\d*)/);
+        // 匹配价格模式：只匹配合理的价格格式（数字+小数点+最多2位小数）
+        // 排除过长的数字（超过8位的不可能是价格）
+        const matches = text.match(/(\\d+)\\.(\\d{1,2})/);
         if (matches) {
-            let p = matches[1];
-            // 强制只保留2位小数
-            const dotIdx = p.indexOf('.');
-            if (dotIdx > 0) {
-                p = p.substring(0, dotIdx + Math.min(p.length - dotIdx, 3));
-            }
+            let p = matches[1] + '.' + matches[2];
+            // 价格不能超过8位（含小数点）
+            if (p.length > 8) return '';
             return p;
+        }
+        // 如果没有小数点，匹配纯整数（1-5位）
+        const intMatch = text.match(/^\\d{1,5}$/);
+        if (intMatch) {
+            return intMatch[0];
         }
         return '';
     }
+
 
 
     const list = [];
@@ -425,27 +429,41 @@ def is_suspected_infringement(title, price, location, use_ai=False, progress_cb=
 
 
 def detect_browser():
+    """检测已安装的浏览器，返回 (browser_name, browser_path, user_data_dir)"""
     if os.name == 'nt':
-        edge_paths = ["C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"]
-        chrome_paths = ["C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"]
-        for p in edge_paths:
-            if os.path.exists(p): return "edge", p
-        for p in chrome_paths:
-            if os.path.exists(p): return "chrome", p
-    return "chromium", None
+        # Edge 用户数据目录
+        edge_paths = [
+            ("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", os.path.expanduser("~\\AppData\\Local\\Microsoft\\Edge\\User Data")),
+            ("C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe", os.path.expanduser("~\\AppData\\Local\\Microsoft\\Edge\\User Data")),
+        ]
+        # Chrome 用户数据目录
+        chrome_paths = [
+            ("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", os.path.expanduser("~\\AppData\\Local\\Google\\Chrome\\User Data")),
+            ("C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", os.path.expanduser("~\\AppData\\Local\\Google\\Chrome\\User Data")),
+        ]
+        for p, udd in edge_paths:
+            if os.path.exists(p): return "edge", p, udd
+        for p, udd in chrome_paths:
+            if os.path.exists(p): return "chrome", p, udd
+    return "chromium", None, None
 
 COOKIE_FILE = BASE / "data" / "taobao_cookies.json"
 
 def load_cookies(ctx):
-    if not COOKIE_FILE.exists(): return False
+    if not COOKIE_FILE.exists():
+        logger.info("Cookie文件不存在，需要手动登录")
+        return False
     try:
         with open(COOKIE_FILE, "r", encoding="utf-8") as f:
             cookies = json.load(f)
         for c in cookies:
             c.pop('sameSite', None); c.pop('priority', None); c.pop('sameParty', None); c.pop('sourceScheme', None); c.pop('sourcePort', None)
         ctx.add_cookies(cookies)
+        logger.info(f"成功加载 {len(cookies)} 个Cookie")
         return True
-    except: return False
+    except Exception as e:
+        logger.error(f"加载Cookie失败: {e}")
+        return False
 
 def save_cookies(ctx):
     try:
@@ -453,8 +471,11 @@ def save_cookies(ctx):
         COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(COOKIE_FILE, "w", encoding="utf-8") as f:
             json.dump(cookies, f, ensure_ascii=False, indent=2)
+        logger.info(f"成功保存 {len(cookies)} 个Cookie到 {COOKIE_FILE}")
         return True
-    except: return False
+    except Exception as e:
+        logger.error(f"保存Cookie失败: {e}")
+        return False
 
 def _handle_login(page, max_retries=3):
     for i in range(max_retries):
@@ -555,9 +576,13 @@ def _wait_for_login(page, ctx, timeout_minutes=10, stop_event=None):
 
 
 
-def check_login_status(page):
+def check_login_status(page, ctx=None):
     try:
+        # 方式1：Cookie检测（最可靠）
+        if ctx and _check_login_by_cookies(ctx):
+            return True
         _handle_login(page); page.wait_for_timeout(500)
+        # 方式2：JS DOM检测
         logged_in = page.evaluate(IS_LOGGED_IN_JS)
         if logged_in is True: return True
         if logged_in is False: return False
@@ -565,6 +590,7 @@ def check_login_status(page):
         if not has_login_modal and ('taobao.com' in page.url or 'tmall.com' in page.url): return True
         return False
     except: return False
+
 
 def check_captcha(page):
     try: return page.evaluate(CAPTCHA_CHECK_JS)
@@ -633,37 +659,62 @@ class Detector:
     
     def run(self) -> tuple[list, int, int, int, str]:
         if os.name == 'nt':
-            browser_name, browser_path = detect_browser()
+            browser_name, browser_path, user_data_dir = detect_browser()
             self.progress(f"检测到浏览器: {browser_name}")
         else:
             browser_name = "chromium"
+            user_data_dir = None
         
         self.progress("启动浏览器...")
         from playwright.sync_api import sync_playwright
         
         with sync_playwright() as p:
-            if browser_name == "edge":
-                browser = p.chromium.launch(headless=False, channel="msedge", args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
-            elif browser_name == "chrome":
-                browser = p.chromium.launch(headless=False, channel="chrome", args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
-            else:
-                browser = p.chromium.launch(headless=False, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+            # ========== 启动浏览器 ==========
+            # 使用最稳妥的方式：不指定用户数据目录，避免与已运行的浏览器冲突
+            # Cookie通过之前保存的 taobao_cookies.json 文件加载
+            launch_args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"]
             
+            # 先尝试用channel启动（使用系统已安装的Edge/Chrome）
+            # 如果失败则回退到纯chromium
+            browser = None
+            if browser_name in ("edge", "chrome"):
+                try:
+                    self.progress(f"尝试使用系统{browser_name}浏览器...")
+                    browser = p.chromium.launch(
+                        headless=False,
+                        channel=browser_name,
+                        args=launch_args,
+                        timeout=15000,  # 15秒超时
+                    )
+                except Exception as e:
+                    self.progress(f"⚠️ 系统{browser_name}启动失败: {str(e)[:60]}")
+                    self.progress("回退到内置Chromium浏览器...")
+                    browser = None
+            
+            if browser is None:
+                browser = p.chromium.launch(
+                    headless=False,
+                    args=launch_args,
+                    timeout=30000,
+                )
             self._browser = browser
-            self._ctx = ctx = browser.new_context(
+            ctx = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 locale="zh-CN", timezone_id="Asia/Shanghai",
             )
+            self._ctx = ctx
+            
             page = ctx.new_page()
             page.add_init_script(STEALTH_JS)
             page._progress = self.progress
             
-            # ========== 第一步：登录 ==========
+            # ========== 第一步：登录验证 ==========
             self.progress("=" * 60)
             self.progress("第一步：登录验证")
             self.progress("=" * 60)
             
+            # 先尝试加载已保存的Cookie文件
             if COOKIE_FILE.exists():
                 self.progress("📂 加载本地登录凭证...")
                 loaded = load_cookies(ctx)
@@ -673,16 +724,15 @@ class Detector:
             self._navigate_and_handle_login(page, "https://www.taobao.com", wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(2000)
             
-            if not check_login_status(page):
+            if not check_login_status(page, ctx):
                 self.progress("⚠️ 请手动登录淘宝...")
+
                 try:
                     login_btn = page.query_selector('.site-nav-login-info a, .J_Login, .btn-login')
                     if login_btn: login_btn.click(); page.wait_for_timeout(1000)
                 except: pass
                 if not _wait_for_login(page, ctx, timeout_minutes=1, stop_event=self._stop_event):
                     self.progress("❌ 登录失败"); return [], 0, 0, 0, ""
-
-
 
                 save_cookies(ctx)
             
@@ -792,8 +842,9 @@ class Detector:
                             continue
                 
                 # 确认登录状态
-                if not check_login_status(page):
+                if not check_login_status(page, ctx):
                     self.progress("⚠️ 登录状态失效，重新登录...")
+
                     login_ok = _wait_for_login(page, ctx, timeout_minutes=5)
 
                     if not login_ok:
@@ -930,7 +981,8 @@ class Detector:
             if inf_count == 0:
                 self.progress("⚠️ 未找到任何侵权商品")
                 ctx.close()
-                browser.close()
+                try: browser.close()
+                except: pass
                 return results, inf_count, total_books, total_scanned, ""
             
             self.progress("📝 生成Excel报告...")
@@ -950,7 +1002,7 @@ class Detector:
             has_ai_results = any(r.get("ai_result") for r in results)
             
             if has_ai_results:
-                headers = ["序号","商品名称","商品截图","商品URL","记录时间","价格","是否侵权","AI验证","AI置信度","AI建议"]
+                headers = ["序号","商品名称","商品截图","商品URL","记录时间","价格","是否侵权","AI侵权校验","AI置信度","AI建议"]
             else:
                 headers = ["序号","商品名称","商品截图","商品URL","记录时间","价格","是否侵权"]
             
@@ -1016,16 +1068,37 @@ class Detector:
                     ai = r.get("ai_result", {})
                     if ai:
                         ai_inf = ai.get("is_infringement")
-                        ai_conf = ai.get("confidence", "")
-                        ai_sug = ai.get("suggestion", "")
+                        conf_score = ai.get("confidence_score", 0)
+                        ai_sug = ai.get("suggestion", "建议复核")
                         
-                        ai_text = "是" if ai_inf is True else ("否" if ai_inf is False else "未知")
-                        ai_font = red if ai_inf is True else (green if ai_inf is False else orange)
+                        # AI侵权校验列：只填"是"或"否"
+                        if ai_inf is True:
+                            ai_text = "是"
+                        elif ai_inf is False:
+                            ai_text = "否"
+                        else:
+                            ai_text = "建议复核"
+                        
+                        # 根据分数决定建议和颜色
+                        if ai_inf is True:
+                            if conf_score >= 80:
+                                ai_sug = "确认侵权"
+                                ai_font = Font(color="FF0000", bold=True)
+                            elif conf_score >= 60:
+                                ai_sug = "酌情复核"
+                                ai_font = Font(color="FF0000", bold=True)
+                            else:
+                                ai_sug = "建议复核"
+                                ai_font = Font(color="FF0000", bold=True)
+                        elif ai_inf is False:
+                            ai_font = green
+                        else:
+                            ai_font = orange
                         
                         c8 = ws.cell(row=ri, column=8, value=ai_text)
                         c8.border=thin; c8.alignment=Alignment(horizontal="center", vertical="center", wrap_text=True); c8.font = ai_font
                         
-                        c9 = ws.cell(row=ri, column=9, value=ai_conf)
+                        c9 = ws.cell(row=ri, column=9, value=f"{conf_score}%")
                         c9.border=thin; c9.alignment=Alignment(horizontal="center", vertical="center", wrap_text=True); c9.font = ai_font
                         
                         c10 = ws.cell(row=ri, column=10, value=ai_sug)

@@ -11,7 +11,7 @@ BASE = Path(__file__).resolve().parent.parent
 # 方式1：从环境变量读取（推荐，避免Key泄露）
 # 设置方式：set DEEPSEEK_API_KEY=sk-你的key
 # 方式2：直接填写下方（不填不影响基础检测功能）
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-your-api-key-here")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
