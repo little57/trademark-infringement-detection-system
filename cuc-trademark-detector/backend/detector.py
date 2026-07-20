@@ -42,7 +42,22 @@ TRADEMARK_KWS = ["中国传媒大学","中传","CUC","校徽","校名"]
 INFRINGEMENT_CATEGORY_KWS = ["T恤","卫衣","衣服","服装","外套","夹克","冲锋衣","帽子","鸭舌帽","棒球帽","帆布包","手提袋","包",
                               "笔记本","记事本","珐琅","钥匙扣","挂件","冰箱贴","磁贴",
                               "手机壳","马克杯","水杯","杯子","抱枕","靠垫","坐垫","口罩","书签","明信片",
-                              "定制","批发","批量","礼品","礼物","礼盒","礼袋","礼品袋","礼品盒","礼品套装",]
+                              "定制","批发","批量","礼品","礼物","礼盒","礼袋","礼品袋","礼品盒","礼品套装",
+                              "徽章","胸针","贴纸","胶带","扇子","手环","徽标","LOGO","纪念章","校徽",
+                              "周边","文创","纪念品","纪念","收藏","摆件","装饰","挂饰","饰品",
+                              "手提袋","购物袋","环保袋","布袋","纸袋","塑料袋",
+                              "卡套","卡贴","卡包","证件套","工牌套",
+                              "鼠标垫","桌垫","杯垫","餐垫",
+                              "雨伞","伞","遮阳伞",
+                              "毛巾","浴巾","手帕",
+                              "拖鞋","凉拖","棉拖",
+                              "睡衣","家居服","内裤","袜子",
+                              "书包","双肩包","单肩包","斜挎包","钱包",
+                              "手链","项链","戒指","耳环","手镯",
+                              "公仔","玩偶","娃娃","毛绒",
+                              "徽标贴","标志贴","商标贴",
+                              "毕业","毕业季","毕业纪念",
+                              "录取","通知书","录取通知书",]
 # 低价阈值：低于此价格认为可能是侵权商品
 LOW_PRICE_THRESHOLD = 100
 STEALTH_JS = """
@@ -231,80 +246,134 @@ GET_PAGE_INFO_JS = """
 """
 EXTRACT_ITEMS_JS = """
 () => {
-    // 辅助函数：从文本中提取价格，只保留2位小数
+    // 辅助函数：从文本中提取价格
     function extractPrice(text) {
         if (!text) return '';
-        // 匹配价格模式：只匹配合理的价格格式（数字+小数点+最多2位小数）
-        // 排除过长的数字（超过8位的不可能是价格）
-        const matches = text.match(/(\\d+)\\.(\\d{1,2})/);
+        // 淘宝价格格式：view_price可能是 "98.00" 或 "98" 或 "¥98.00"
+        // 先去掉货币符号和空格
+        let clean = text.replace(/[¥￥$€,，\\s]/g, '').trim();
+        // 只保留数字和小数点
+        let digits = clean.replace(/[^\\d.]/g, '');
+        // 匹配合理的价格格式：整数部分1-5位，可选小数部分1-2位
+        // 先尝试匹配 "数字.数字" 格式（标准价格格式）
+        const matches = digits.match(/^(\\d{1,5})\\.(\\d{1,2})$/);
         if (matches) {
             let p = matches[1] + '.' + matches[2];
             // 价格不能超过8位（含小数点）
             if (p.length > 8) return '';
+            // 价格不能为0
+            if (parseFloat(p) <= 0) return '';
             return p;
         }
-        // 如果没有小数点，匹配纯整数（1-5位）
-        const intMatch = text.match(/^\\d{1,5}$/);
+        // 匹配纯整数（1-5位）
+        const intMatch = digits.match(/^(\\d{1,5})$/);
         if (intMatch) {
-            return intMatch[0];
+            let p = intMatch[1];
+            // 去掉前导0
+            p = String(parseInt(p));
+            if (p === '0') return '';
+            return p;
+        }
+        // 如果以上都不行，尝试从清理后的文本中提取
+        // 但只匹配合理的价格范围（1-99999）
+        const anyNum = digits.match(/^(\\d{1,5})(\\.\\d{1,2})?$/);
+        if (anyNum) {
+            let p = anyNum[1];
+            if (anyNum[2]) p += anyNum[2];
+            if (parseFloat(p) <= 0) return '';
+            return p;
         }
         return '';
     }
 
-
+    // 辅助函数：提取图片URL
+    function extractPicUrl(a) {
+        let pic = a.pic_url || '';
+        if (!pic) {
+            // 尝试从其他字段获取
+            pic = a.pic_path || a.img_url || a.image || '';
+        }
+        if (pic && !pic.startsWith('http')) {
+            pic = 'https:' + pic;
+        }
+        return pic;
+    }
 
     const list = [];
-    // 方式1：从g_page_config全局变量
+    // 方式1：从g_page_config全局变量（最可靠）
     try { if (typeof g_page_config !== 'undefined' && g_page_config.mods?.itemlist?.data?.auctions) {
-        g_page_config.mods.itemlist.data.auctions.forEach(a => { list.push({
-            title: (a.raw_title||a.title||'').replace(/<[^>]+>/g,''),
-            url: 'https:' + (a.detail_url||''),
-            price: extractPrice(a.view_price||''),
-            seller: a.nick||'',
-            location: a.item_loc||'',
-        }); });
+        g_page_config.mods.itemlist.data.auctions.forEach(a => { 
+            let price = a.view_price || a.price || '';
+            list.push({
+                title: (a.raw_title||a.title||'').replace(/<[^>]+>/g,''),
+                url: (a.detail_url||'').startsWith('//') ? 'https:' + (a.detail_url||'') : (a.detail_url||''),
+                price: extractPrice(price),
+                seller: a.nick||'',
+                location: a.item_loc||'',
+                pic_url: extractPicUrl(a),
+            });
+        });
     } } catch(e) {}
     // 方式2：从script标签
     if (list.length === 0) { for (const s of document.querySelectorAll('script')) {
         const m = (s.textContent||'').match(/g_page_config\\s*=\\s*({.*?});/);
-        if (m) try { const cfg = JSON.parse(m[1]); (cfg.mods?.itemlist?.data?.auctions||[]).forEach(a => list.push({
-            title: (a.raw_title||a.title||'').replace(/<[^>]+>/g,''),
-            url: 'https:' + (a.detail_url||''),
-            price: extractPrice(a.view_price||''),
-            seller: a.nick||'',
-            location: a.item_loc||'',
-        })); } catch(e) {}
+        if (m) try { const cfg = JSON.parse(m[1]); (cfg.mods?.itemlist?.data?.auctions||[]).forEach(a => {
+            let price = a.view_price || a.price || '';
+            list.push({
+                title: (a.raw_title||a.title||'').replace(/<[^>]+>/g,''),
+                url: (a.detail_url||'').startsWith('//') ? 'https:' + (a.detail_url||'') : (a.detail_url||''),
+                price: extractPrice(price),
+                seller: a.nick||'',
+                location: a.item_loc||'',
+                pic_url: extractPicUrl(a),
+            });
+        }); } catch(e) {}
     } }
-    // 方式3：从DOM元素
+    // 方式3：从DOM元素（带图片提取）
     if (list.length === 0) {
-        document.querySelectorAll('[data-spm*="item"], .search-item, .item-card, [class*="Card"]').forEach(el => { try {
+        document.querySelectorAll('[data-spm*="item"], .search-item, .item-card, [class*="Card"], .J_MouserOnverReq').forEach(el => { try {
             const link = el.querySelector('a[href*="item.taobao.com"], a[href*="detail.tmall.com"]');
             const titleEl = el.querySelector('[class*="Title"], [class*="title"], [class*="Name"], [class*="name"]');
-            const priceEl = el.querySelector('[class*="Price"], [class*="price"]');
+            const priceEl = el.querySelector('[class*="Price"], [class*="price"], [class*="g_price"]');
             const shopEl = el.querySelector('[class*="Shop"], [class*="shop"], [class*="Seller"], [class*="seller"]');
             const locEl = el.querySelector('[class*="location"], [class*="Location"], [class*="loc"], [class*="address"]');
+            // 提取图片
+            const imgEl = el.querySelector('img[class*="pic"], img[class*="img"], img[class*="Pic"], img[data-src], img[src*="alicdn"]');
+            let pic_url = '';
+            if (imgEl) {
+                pic_url = imgEl.getAttribute('data-src') || imgEl.getAttribute('src') || '';
+                if (pic_url && !pic_url.startsWith('http')) pic_url = 'https:' + pic_url;
+            }
             const title = titleEl ? (titleEl.textContent || titleEl.innerText || '').trim() : '';
             const price = priceEl ? extractPrice(priceEl.textContent || '') : '';
             const seller = shopEl ? (shopEl.textContent || '').trim() : '';
             const location = locEl ? (locEl.textContent || '').trim() : '';
             let url = link ? (link.href || '') : '';
             if (url && url.startsWith('//')) url = 'https:' + url;
-            if (title && url && title.length > 2) list.push({ title, url, price, seller, location });
+            if (title && url && title.length > 2) list.push({ title, url, price, seller, location, pic_url });
         } catch(e) {} });
     }
-    // 方式4：从所有商品链接
+    // 方式4：从所有商品链接（带图片提取）
     if (list.length === 0) { const seen = new Set();
         document.querySelectorAll('a[href*="item.taobao.com"], a[href*="detail.tmall.com"]').forEach(link => { try {
             let url = link.href || ''; if (url && url.startsWith('//')) url = 'https:' + url;
             if (seen.has(url)) return; seen.add(url);
-            let parent = link.closest('[class*="item"], [class*="card"], [class*="Card"], li, .search-item') || link.parentElement;
+            let parent = link.closest('[class*="item"], [class*="card"], [class*="Card"], li, .search-item, [class*="Item"]') || link.parentElement;
             let title = link.textContent || link.title || '';
             if (!title || title.length < 3) { title = parent ? (parent.textContent || '').trim() : ''; title = title.substring(0, 120); }
             let price = '';
-            if (parent) { const pEl = parent.querySelector('[class*="price"], [class*="Price"]'); if (pEl) price = extractPrice(pEl.textContent || ''); }
+            if (parent) { const pEl = parent.querySelector('[class*="price"], [class*="Price"], [class*="g_price"]'); if (pEl) price = extractPrice(pEl.textContent || ''); }
             let location = '';
             if (parent) { const lEl = parent.querySelector('[class*="location"], [class*="Location"]'); if (lEl) location = (lEl.textContent || '').trim(); }
-            if (title && title.length > 2) list.push({ title: title.replace(/<[^>]+>/g,'').trim(), url, price, seller: '', location });
+            // 提取图片
+            let pic_url = '';
+            if (parent) { const imgEl = parent.querySelector('img[class*="pic"], img[class*="img"], img[data-src], img[src*="alicdn"]');
+                if (imgEl) {
+                    pic_url = imgEl.getAttribute('data-src') || imgEl.getAttribute('src') || '';
+                    if (pic_url && !pic_url.startsWith('http')) pic_url = 'https:' + pic_url;
+                }
+            }
+            if (title && title.length > 2) list.push({ title: title.replace(/<[^>]+>/g,'').trim(), url, price, seller: '', location, pic_url });
         } catch(e) {} });
     }
     const seen = new Set(); const uniqueList = [];
@@ -631,12 +700,22 @@ def wait_for_captcha_solve(page, timeout_minutes=5):
     self_progress("⏰ 滑块验证超时"); return False
 
 class Detector:
-    def __init__(self, progress_cb=None, max_pages=10):
+    def __init__(self, progress_cb=None, max_pages=10, existing_results=None, start_page=0):
+        """
+        Args:
+            progress_cb: 进度回调函数
+            max_pages: 本次要检测的页数
+            existing_results: 已有的检测结果列表（用于增量检测）
+            start_page: 起始页码（0=从第1页开始，n=从第n+1页开始）
+        """
         self.progress = progress_cb or (lambda msg: print(msg))
         self._stop_event = threading.Event()
         self._browser = None
         self._ctx = None
         self.max_pages = max_pages
+        # 增量检测支持
+        self.existing_results = existing_results or []
+        self.start_page = start_page  # 起始页码
     
     def stop(self):
         self._stop_event.set()
@@ -744,21 +823,28 @@ class Detector:
             self.progress(f"🔍 搜索关键词: \"{KEYWORD}\"")
             self.progress(f"📄 最多翻页数: {self.max_pages} 页")
             
-            results = []
-            page_num = 0
+            # 增量检测：使用已有的结果
+            results = list(self.existing_results)  # 复制已有结果
+            page_num = self.start_page  # 从指定页码开始
             total_scanned = 0
             total_books = 0
             total_infringing = 0
             
-            first_search_url = "https://s.taobao.com/search?q=" + urllib.parse.quote(KEYWORD)
-            self.progress("🌐 访问搜索结果页...")
+            if self.existing_results:
+                self.progress(f"📋 已有 {len(self.existing_results)} 个检测结果，继续增量检测...")
+                self.progress(f"📄 从第 {self.start_page + 1} 页开始检测，共 {self.max_pages} 页")
+            
+            # 计算起始偏移量：淘宝每页44个商品，第n页偏移为 (n-1)*44
+            s_offset = self.start_page * 44
+            first_search_url = "https://s.taobao.com/search?q=" + urllib.parse.quote(KEYWORD) + "&s=" + str(s_offset)
+            self.progress(f"🌐 访问搜索结果页（偏移量: {s_offset}）...")
             self._navigate_and_handle_login(page, first_search_url, wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(3000)
             
-            # 记录已访问过的页码，避免重复
+            # 记录已访问过的页码
             visited_pages = set()
             
-            while page_num < self.max_pages:
+            while page_num < self.start_page + self.max_pages:
                 # 检查是否被用户终止
                 if self._stop_event and self._stop_event.is_set():
                     self.progress("🛑 用户终止检测")
@@ -950,6 +1036,9 @@ class Detector:
                         try: detail_page.close()
                         except: pass
                     
+                    # 获取商品主图URL（搜索结果页的缩略图，清晰可辨）
+                    pic_url = item.get('pic_url', '')
+                    
                     results.append({
                         "序号": len(results) + 1,
                         "商品名称": title[:120],
@@ -958,6 +1047,7 @@ class Detector:
                         "价格": item.get('price', ''),
                         "是否侵权": "是",
                         "截图路径": fpath,
+                        "主图URL": pic_url,  # 搜索结果页的主图URL，用于卡片显示
                     })
                 
                 # 每5页保存一次cookies

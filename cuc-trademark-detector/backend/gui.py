@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 中国传媒大学 侵权商品检测系统 - GUI 前端
+卡片式布局：每个商品一张卡片，显示截图、名称、链接、处理状态
 """
 import os
 import pathlib
@@ -10,12 +11,12 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import messagebox, ttk
+from PIL import Image, ImageTk
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
 from backend.detector import Detector, REPORTS_DIR, SCREENSHOTS, AI_VERIFIER_AVAILABLE
-
 # AI验证报告单独存放目录（与reports同级）
 AI_REPORTS_DIR = REPORTS_DIR.parent / "ai_reports"
 
@@ -26,20 +27,83 @@ except ImportError:
     AI_BATCH_AVAILABLE = False
 
 
+# ========== 工具函数 ==========
+def _load_thumbnail(img_path, max_size=(180, 180), img_url=""):
+    """加载图片并生成缩略图，失败返回None
+    优先使用主图URL（搜索结果页缩略图），备选本地截图路径
+    """
+    # 优先尝试从URL加载（主图清晰）
+    if img_url:
+        try:
+            import urllib.request
+            from io import BytesIO
+            req = urllib.request.Request(img_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = resp.read()
+            if data:
+                pil_img = Image.open(BytesIO(data))
+                pil_img.thumbnail(max_size, Image.LANCZOS)
+                return ImageTk.PhotoImage(pil_img)
+        except Exception:
+            pass  # URL加载失败，回退到本地截图
+    
+    # 备选：从本地截图路径加载
+    if img_path and os.path.exists(img_path):
+        try:
+            pil_img = Image.open(img_path)
+            pil_img.thumbnail(max_size, Image.LANCZOS)
+            return ImageTk.PhotoImage(pil_img)
+        except Exception:
+            return None
+    return None
+
+
+def _round_rectangle(canvas, x1, y1, x2, y2, radius=8, **kwargs):
+    """在Canvas上绘制圆角矩形"""
+    points = []
+    for i in range(0, 10):
+        angle = i * 9
+        points.append(x2 - radius + radius * __import__('math').cos(__import__('math').radians(angle)))
+        points.append(y1 + radius - radius * __import__('math').sin(__import__('math').radians(angle)))
+    for i in range(0, 10):
+        angle = 90 + i * 9
+        points.append(x2 - radius + radius * __import__('math').cos(__import__('math').radians(angle)))
+        points.append(y2 - radius + radius * __import__('math').sin(__import__('math').radians(angle)))
+    for i in range(0, 10):
+        angle = 180 + i * 9
+        points.append(x1 + radius + radius * __import__('math').cos(__import__('math').radians(angle)))
+        points.append(y2 - radius + radius * __import__('math').sin(__import__('math').radians(angle)))
+    for i in range(0, 10):
+        angle = 270 + i * 9
+        points.append(x1 + radius + radius * __import__('math').cos(__import__('math').radians(angle)))
+        points.append(y1 + radius + radius * __import__('math').sin(__import__('math').radians(angle)))
+    return canvas.create_polygon(points, **kwargs, smooth=True)
+
 
 class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("中国传媒大学 - 侵权商品检测系统")
-        self.root.geometry("1100x700")
-        self.root.minsize(900, 550)
+        self.root.geometry("1200x800")
+        self.root.minsize(1000, 650)
         self.root.configure(bg="#f5f7fa")
 
         self.results = []
         self._last_excel = ""
         self._detector = None
         self._running = False
+        # 处理状态映射：key=商品序号, value=True(已处理)/False(未处理)
+        self._processed_map = {}
+        self._processed_count = 0
+        # 保存卡片PhotoImage引用，防止被GC回收
+        self._card_images = []
+        # 已检测过的页数（用于增量检测）
+        self._detected_pages = 0
         self._build()
+
+    # ==================== UI 构建 ====================
 
     def _build(self):
         r = self.root
@@ -98,6 +162,22 @@ class App:
             command=self.start,
         )
         self.btn_start.pack(side="left")
+
+        # 继续检测按钮（增量检测，保留已有结果）
+        self.btn_continue = tk.Button(
+            search_frame,
+            text="📌 继续检测",
+            font=("微软雅黑", 10, "bold"),
+            bg="#f39c12",
+            fg="white",
+            padx=18,
+            pady=4,
+            relief="flat",
+            cursor="hand2",
+            state="disabled",
+            command=self.continue_detect,
+        )
+        self.btn_continue.pack(side="left", padx=(8, 0))
 
         # 停止检测按钮
         self.btn_stop = tk.Button(
@@ -178,7 +258,6 @@ class App:
         tk.Label(
             login_tip_frame,
             text="💡 登录提示：如未提前登录淘宝，建议在浏览器弹出后使用「扫码登录」方式，短信登录可能被运营商拦截导致失败。登录等待超时1分钟，请尽快完成登录。",
-
             font=("微软雅黑", 9),
             bg="#fff8e1",
             fg="#8d6e00",
@@ -186,12 +265,16 @@ class App:
             justify="left",
         ).pack(fill="x")
 
-
-        # ========== 统计卡片 ==========
+        # ========== 统计卡片（4个） ==========
         stats = tk.Frame(main, bg="#f5f7fa")
         stats.pack(fill="x", pady=(0, 6))
         self.st = {}
-        for label, color in [("总商品", "#2c3e50"), ("疑似侵权", "#e74c3c"), ("书籍排除", "#27ae60")]:
+        for label, color in [
+            ("总商品", "#2c3e50"),
+            ("疑似侵权", "#e74c3c"),
+            ("书籍排除", "#27ae60"),
+            ("已处理", "#f39c12"),
+        ]:
             frame = tk.Frame(stats, bg="white", highlightbackground="#dde", highlightthickness=1, padx=14, pady=6)
             value = tk.Label(frame, text="-", font=("微软雅黑", 18, "bold"), bg="white", fg=color)
             value.pack()
@@ -199,30 +282,245 @@ class App:
             frame.pack(side="left", fill="x", expand=True, padx=(0, 4))
             self.st[label] = value
 
-        # ========== 结果表格 ==========
-        table_frame = tk.Frame(main, bg="white", highlightbackground="#dde", highlightthickness=1)
-        table_frame.pack(fill="both", expand=True)
+        # ========== 卡片列表区域（Canvas + Scrollbar） ==========
+        card_container = tk.Frame(main, bg="white", highlightbackground="#dde", highlightthickness=1)
+        card_container.pack(fill="both", expand=True)
 
-        cols = ("#", "商品名称", "价格", "侵权", "时间")
-        self.tree = ttk.Treeview(table_frame, columns=cols, show="headings", height=16)
-        for col in cols:
-            self.tree.heading(col, text=col)
-        self.tree.column("#", width=35, anchor="center")
-        self.tree.column("商品名称", width=580)
-        self.tree.column("价格", width=80, anchor="center")
-        self.tree.column("侵权", width=90, anchor="center")
-        self.tree.column("时间", width=130, anchor="center")
+        self._canvas = tk.Canvas(card_container, bg="white", highlightthickness=0)
+        self._scrollbar = ttk.Scrollbar(card_container, orient="vertical", command=self._canvas.yview)
+        self._scrollable_frame = tk.Frame(self._canvas, bg="white")
 
-        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
-        self.tree.tag_configure("inf", background="#fff0f0")
-        self.tree.bind("<Double-1>", self._open)
+        self._scrollable_frame.bind("<Configure>", lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
+        self._canvas.create_window((0, 0), window=self._scrollable_frame, anchor="nw")
+        self._canvas.configure(yscrollcommand=self._scrollbar.set)
+
+        self._canvas.pack(side="left", fill="both", expand=True)
+        self._scrollbar.pack(side="right", fill="y")
+
+        # 绑定鼠标滚轮
+        def _on_mousewheel(event):
+            self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        self._canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         # ========== 底部计数 ==========
         self.cnt = tk.Label(main, text="", font=("微软雅黑", 9), bg="#f5f7fa", fg="#7f8c8d")
         self.cnt.pack(anchor="w", pady=(2, 0))
+
+    # ==================== 卡片渲染 ====================
+
+    def _clear_cards(self):
+        """清空所有卡片"""
+        for w in self._scrollable_frame.winfo_children():
+            w.destroy()
+        self._card_images.clear()
+
+    def _render_cards(self):
+        """根据self.results渲染所有商品卡片（统一大小）"""
+        self._clear_cards()
+        self._card_images.clear()
+
+        if not self.results:
+            # 显示空状态
+            empty_lbl = tk.Label(
+                self._scrollable_frame,
+                text="暂无检测结果，请点击「开始检测」",
+                font=("微软雅黑", 12),
+                bg="white",
+                fg="#b0b0b0",
+            )
+            empty_lbl.pack(expand=True, pady=100)
+            return
+
+        # 每行显示4个卡片，用grid布局确保大小统一
+        cards_per_row = 4
+        row_frame = None
+
+        for idx, r in enumerate(self.results):
+            col = idx % cards_per_row
+            if col == 0:
+                row_frame = tk.Frame(self._scrollable_frame, bg="white")
+                row_frame.pack(fill="x", pady=(6, 0), padx=6)
+                # 配置grid列权重，使每列等宽
+                for c in range(cards_per_row):
+                    row_frame.grid_columnconfigure(c, weight=1, uniform="card")
+
+            card = self._create_card(row_frame, r, idx)
+            card.grid(row=0, column=col, padx=5, pady=5, sticky="nsew")
+
+    def _create_card(self, parent, r, idx):
+        """创建单个商品卡片（美化版：圆角+阴影效果）"""
+        # 卡片容器（用Frame模拟圆角，白色背景）
+        card = tk.Frame(
+            parent,
+            bg="#ffffff",
+            highlightbackground="#e8e8e8",
+            highlightthickness=1,
+            padx=10,
+            pady=10,
+            relief="solid",
+            bd=0,
+        )
+
+        # ---- 商品截图（优先使用搜索结果页主图，备选本地截图）----
+        img_path = r.get("截图路径", "")
+        img_url = r.get("主图URL", "")
+        photo = _load_thumbnail(img_path, (180, 180), img_url)
+
+        # 图片容器（模拟圆角）
+        img_container = tk.Frame(card, bg="#f0f2f5", highlightthickness=0)
+        img_container.pack(pady=(0, 6), fill="x")
+
+        img_label = tk.Label(img_container, bg="#f0f2f5", cursor="hand2")
+        if photo:
+            img_label.config(image=photo)
+            self._card_images.append(photo)
+        else:
+            img_label.config(
+                text="📷\n暂无截图",
+                font=("微软雅黑", 10),
+                fg="#b0b0b0",
+                width=16,
+                height=7,
+            )
+        img_label.pack(padx=2, pady=2)
+
+        # 点击图片跳转链接
+        url = r.get("商品URL", "")
+        if url:
+            img_label.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+
+        # ---- 序号标签 ----
+        seq = r.get("序号", idx + 1)
+        seq_lbl = tk.Label(
+            card,
+            text=f"#{seq}",
+            font=("微软雅黑", 8, "bold"),
+            bg="#ffffff",
+            fg="#95a5a6",
+        )
+        seq_lbl.pack(anchor="w")
+
+        # ---- 商品名称 ----
+        name = r.get("商品名称", "")
+        name_text = name if len(name) <= 26 else name[:24] + "..."
+        name_lbl = tk.Label(
+            card,
+            text=name_text,
+            font=("微软雅黑", 9, "bold"),
+            bg="#ffffff",
+            fg="#2c3e50",
+            anchor="w",
+            justify="left",
+            wraplength=170,
+            cursor="hand2" if url else "",
+        )
+        name_lbl.pack(fill="x", pady=(2, 2))
+        if url:
+            name_lbl.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+            name_lbl.config(fg="#2980b9")
+
+        # ---- 分隔线 ----
+        sep = tk.Frame(card, bg="#eeeeee", height=1)
+        sep.pack(fill="x", pady=3)
+
+        # ---- 价格 + 侵权标签行 ----
+        info_frame = tk.Frame(card, bg="#ffffff")
+        info_frame.pack(fill="x")
+
+        price = r.get("价格", "")
+        price_lbl = tk.Label(
+            info_frame,
+            text=f"¥{price}" if price else "价格未知",
+            font=("微软雅黑", 11, "bold"),
+            bg="#ffffff",
+            fg="#e74c3c",
+        )
+        price_lbl.pack(side="left")
+
+        # 侵权标签
+        is_inf = r.get("是否侵权", "")
+        if is_inf == "是":
+            inf_badge = tk.Label(
+                info_frame,
+                text="侵权",
+                font=("微软雅黑", 8, "bold"),
+                bg="#e74c3c",
+                fg="white",
+                padx=6,
+                pady=1,
+            )
+            inf_badge.pack(side="right")
+
+        # ---- 处理状态按钮 ----
+        is_processed = self._processed_map.get(seq, False)
+
+        btn_frame = tk.Frame(card, bg="#ffffff")
+        btn_frame.pack(fill="x", pady=(6, 0))
+
+        if is_processed:
+            # 已处理：绿色按钮
+            status_btn = tk.Button(
+                btn_frame,
+                text="✅ 已处理",
+                font=("微软雅黑", 9, "bold"),
+                bg="#27ae60",
+                fg="white",
+                padx=8,
+                pady=3,
+                relief="flat",
+                cursor="hand2",
+                activebackground="#219a52",
+                activeforeground="white",
+                command=lambda s=seq: self._toggle_processed(s),
+            )
+        else:
+            # 未处理：描边风格按钮
+            status_btn = tk.Button(
+                btn_frame,
+                text="⏳ 标记已处理",
+                font=("微软雅黑", 9, "bold"),
+                bg="white",
+                fg="#7f8c8d",
+                padx=8,
+                pady=3,
+                relief="solid",
+                bd=1,
+                highlightbackground="#d5d8dc",
+                cursor="hand2",
+                activebackground="#f0f2f5",
+                activeforeground="#2c3e50",
+                command=lambda s=seq: self._toggle_processed(s),
+            )
+        status_btn.pack(fill="x")
+
+        return card
+
+    def _toggle_processed(self, seq):
+        """切换处理状态"""
+        current = self._processed_map.get(seq, False)
+        self._processed_map[seq] = not current
+
+        # 重新统计已处理数量
+        self._processed_count = sum(1 for v in self._processed_map.values() if v)
+        self.st["已处理"].config(text=str(self._processed_count))
+
+        # 重新渲染所有卡片以更新按钮状态
+        self._render_cards()
+
+        # 更新底部计数
+        self._update_bottom_count()
+
+    def _update_bottom_count(self):
+        """更新底部计数"""
+        total = len(self.results)
+        inf_cnt = sum(1 for r in self.results if r.get("是否侵权") == "是")
+        book_cnt = sum(1 for r in self.results if r.get("是否侵权") != "是" and "书籍" in r.get("商品名称", ""))
+        processed = self._processed_count
+        self.cnt.config(
+            text=f"共 {total} 个 · 侵权 {inf_cnt} · 已处理 {processed}/{total}"
+        )
+
+    # ==================== 状态更新 ====================
 
     def _set(self, text, bg=None):
         self.slb.config(text=text)
@@ -230,7 +528,10 @@ class App:
             self.slb.config(bg=bg)
         self.root.update_idletasks()
 
+    # ==================== 检测流程 ====================
+
     def start(self):
+        """全新检测：清空所有已有结果"""
         pages_str = self.pages_var.get().strip()
         if not pages_str:
             messagebox.showwarning("提示", "请输入搜索页数")
@@ -245,19 +546,55 @@ class App:
 
         self._running = True
         self.btn_start.config(state="disabled")
+        self.btn_continue.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.pages_entry.config(state="disabled")
 
-        # 清空表格
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        # 清空所有已有结果
+        self.results = []
+        self._clear_cards()
+        self._processed_map.clear()
+        self._processed_count = 0
         for value in self.st.values():
             value.config(text="-")
         self.cnt.config(text="")
         self.prog.config(text="")
         self._set("检测中...", "#f39c12")
 
-        threading.Thread(target=self._run, args=(max_pages,), daemon=True).start()
+        threading.Thread(target=self._run, args=(max_pages, False), daemon=True).start()
+
+    def continue_detect(self):
+        """继续检测：保留已有结果，从已查页数之后开始增量检测"""
+        pages_str = self.pages_var.get().strip()
+        if not pages_str:
+            messagebox.showwarning("提示", "请输入搜索页数")
+            return
+        try:
+            max_pages = int(pages_str)
+            if max_pages < 1:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning("提示", "页数必须为正整数")
+            return
+
+        if not self.results:
+            messagebox.showinfo("提示", "没有已有结果，请先点击「开始检测」")
+            return
+
+        # 计算已查过的页数：从已查页数之后开始
+        # 例如：上次查了3页，这次输入2，就从第4页开始查2页
+        start_page = self._detected_pages  # 已查过的页数
+        self.prog.config(text=f"从第 {start_page + 1} 页开始，继续检测 {max_pages} 页...")
+
+        self._running = True
+        self.btn_start.config(state="disabled")
+        self.btn_continue.config(state="disabled")
+        self.btn_stop.config(state="normal")
+        self.pages_entry.config(state="disabled")
+
+        self._set("继续检测中...", "#f39c12")
+
+        threading.Thread(target=self._run, args=(max_pages, True, start_page), daemon=True).start()
 
     def stop(self):
         """停止检测"""
@@ -267,14 +604,24 @@ class App:
         self.btn_stop.config(state="disabled")
         self.prog.config(text="正在停止...")
 
-    def _run(self, max_pages):
+    def _run(self, max_pages, is_continue=False, start_page=0):
         try:
             def cb(msg):
                 if not self._running:
                     return
                 self.root.after(0, lambda m=msg: self.prog.config(text=m))
 
-            self._detector = Detector(progress_cb=cb, max_pages=max_pages)
+            if is_continue:
+                # 增量检测：传入已有结果和起始页码
+                self._detector = Detector(
+                    progress_cb=cb,
+                    max_pages=max_pages,
+                    existing_results=self.results,
+                    start_page=start_page,
+                )
+            else:
+                self._detector = Detector(progress_cb=cb, max_pages=max_pages)
+
             result = self._detector.run()
             if len(result) == 5:
                 results, inf_cnt, book_cnt, total_scanned, excel_path = result
@@ -286,47 +633,52 @@ class App:
                 total_scanned = len(results)
                 excel_path = ""
 
-            self.root.after(0, lambda: self._done(results, inf_cnt, book_cnt, total_scanned, excel_path))
+            self.root.after(0, lambda: self._done(results, inf_cnt, book_cnt, total_scanned, excel_path, is_continue, start_page, max_pages))
         except StopIteration:
             self.root.after(0, lambda: self._stopped())
         except Exception as exc:
             detail = traceback.format_exc()
             self.root.after(0, lambda: self._failed(exc, detail))
 
-    def _done(self, results, inf_cnt, book_cnt, total_scanned, excel_path):
+    def _done(self, results, inf_cnt, book_cnt, total_scanned, excel_path, is_continue=False, start_page=0, max_pages=0):
         self._running = False
         self.results = results
         self._last_excel = excel_path or ""
-        self.st["总商品"].config(text=str(total_scanned))
-        self.st["疑似侵权"].config(text=str(inf_cnt))
-        self.st["书籍排除"].config(text=str(book_cnt))
 
-        for r in results:
-            record_time = r.get("记录时间", "")
-            display_time = record_time.split(" ")[1] if " " in record_time else record_time
-            self.tree.insert(
-                "",
-                "end",
-                values=(
-                    r.get("序号", ""),
-                    r.get("商品名称", "")[:80],
-                    r.get("价格", ""),
-                    r.get("是否侵权", ""),
-                    display_time,
-                ),
-                tags=("inf",),
-            )
+        # 更新已检测页数
+        if is_continue:
+            # 增量模式：已查页数 = 起始页 + 本次检测页数
+            self._detected_pages = start_page + max_pages
+        else:
+            # 全新检测：已查页数 = 本次检测页数
+            self._detected_pages = max_pages
 
-        self.cnt.config(text=f"共 {len(results)} 个 · 侵权 {inf_cnt} · 排除书籍 {book_cnt}")
+        if is_continue:
+            # 增量模式：保留已有统计数据，只更新追加后的值
+            self.st["总商品"].config(text=str(total_scanned))
+            self.st["疑似侵权"].config(text=str(inf_cnt))
+            self.st["书籍排除"].config(text=str(book_cnt))
+            # 已处理计数保持不变
+        else:
+            # 全新检测：重置所有统计
+            self.st["总商品"].config(text=str(total_scanned))
+            self.st["疑似侵权"].config(text=str(inf_cnt))
+            self.st["书籍排除"].config(text=str(book_cnt))
+            self.st["已处理"].config(text="0")
+
+        # 渲染卡片
+        self._render_cards()
+
+        self._update_bottom_count()
         self.btn_start.config(state="normal", text="🚀 重新检测")
+        self.btn_continue.config(state="normal")
         self.btn_stop.config(state="disabled")
         self.pages_entry.config(state="normal")
         # 检测完成后启用AI验证按钮
         if AI_BATCH_AVAILABLE and results:
             self.btn_ai.config(state="normal")
         self._set("完成 ✅", "#27ae60")
-        self.prog.config(text="检测完成！")
-
+        self.prog.config(text=f"检测完成！已查 {self._detected_pages} 页")
 
     def _stopped(self):
         self._running = False
@@ -345,15 +697,7 @@ class App:
         self.prog.config(text=str(exc))
         messagebox.showerror("检测失败", detail)
 
-    def _open(self, evt):
-        sel = self.tree.selection()
-        if not sel:
-            return
-        idx = int(self.tree.item(sel[0], "values")[0]) - 1
-        if 0 <= idx < len(self.results):
-            url = self.results[idx].get("商品URL", "")
-            if url:
-                webbrowser.open(url)
+    # ==================== AI验证 ====================
 
     def ai_verify(self):
         """AI批量深度验证"""
@@ -397,30 +741,21 @@ class App:
         ai_clean = sum(1 for r in verified_results if r.get("ai_result", {}).get("is_infringement") is False)
         ai_unknown = sum(1 for r in verified_results if r.get("ai_result", {}).get("is_infringement") is None)
 
-        # 更新表格 - 添加AI验证结果列
-        # 由于ttk.Treeview动态加列比较麻烦，我们在商品名称后追加AI标记
-        for i, item in enumerate(self.tree.get_children()):
-            r = verified_results[i] if i < len(verified_results) else None
-            if r and r.get("ai_result"):
+        # 重新渲染卡片（在商品名称后追加AI标记）
+        for r in self.results:
+            if r.get("ai_result"):
                 ai = r["ai_result"]
                 ai_inf = ai.get("is_infringement")
                 conf_score = ai.get("confidence_score", 0)
-                ai_sug = ai.get("suggestion", "")
-
-                # 在商品名称后追加AI标记
-                current_vals = list(self.tree.item(item, "values"))
-                name = current_vals[1] if len(current_vals) > 1 else ""
                 if ai_inf is True:
                     marker = f" [🤖侵权-{conf_score}分]"
                 elif ai_inf is False:
                     marker = f" [🤖非侵权-{conf_score}分]"
                 else:
                     marker = f" [🤖未知-{conf_score}分]"
+                r["商品名称"] = (r.get("商品名称", "") + marker)[:80]
 
-                if len(current_vals) > 1:
-                    current_vals[1] = (name + marker)[:80]
-                    self.tree.item(item, values=tuple(current_vals))
-
+        self._render_cards()
 
         # 更新统计信息
         ai_summary = f"AI验证: {ai_infringing}侵权 / {ai_clean}非侵权 / {ai_unknown}未知"
@@ -452,9 +787,6 @@ class App:
             AI_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             excel_path = AI_REPORTS_DIR / f"侵权检测报告_AI验证_{timestamp}.xlsx"
-
-
-
 
             wb = Workbook()
             ws = wb.active
@@ -530,7 +862,6 @@ class App:
                 c7 = ws.cell(row=ri, column=7, value=r.get("是否侵权", ''))
                 c7.border=thin; c7.alignment=Alignment(vertical="center",wrap_text=True); c7.font = red
 
-
                 # AI验证结果 - 精确到每一分
                 ai = r.get("ai_result", {})
                 if ai:
@@ -571,8 +902,6 @@ class App:
                     c10 = ws.cell(row=ri, column=10, value=ai_sug)
                     c10.border=thin; c10.alignment=Alignment(vertical="center", wrap_text=True); c10.font = ai_font
 
-
-
             wb.save(str(excel_path))
             self._last_excel = str(excel_path)
             self.prog.config(text=f"✅ AI验证报告已生成: {excel_path.name}")
@@ -595,7 +924,6 @@ class App:
 
     def run(self):
         self.root.mainloop()
-
 
 
 if __name__ == "__main__":
