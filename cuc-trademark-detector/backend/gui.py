@@ -477,7 +477,7 @@ class App:
             # 未处理：描边风格按钮
             status_btn = tk.Button(
                 btn_frame,
-                text="⏳ 标记已处理",
+                text="⏳ 未处理",
                 font=("微软雅黑", 9, "bold"),
                 bg="white",
                 fg="#7f8c8d",
