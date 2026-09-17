@@ -50,20 +50,26 @@ try:
     # 在后台线程中加载主程序
     load_ok = [True]
     exc_info = [None]
+    app_holder = [None]  # 加载完成后存放 App 类
 
     def _load_main():
         try:
             update_status("正在加载依赖模块...")
             from backend.gui import App
             update_status("正在启动主界面...")
-            splash.after(0, lambda: _start_app(App))
+            # 注意：这里不能把 App().run() 交给 splash.after 回调去执行。
+            # splash 一旦 destroy，其 after 回调链随之失效，主界面永远起不来，
+            # 进程会直接结束（表现为窗口一闪而过/无反应）。
+            # 正确做法：只做导入，主循环交由 splash.mainloop() 结束后在主线程启动。
+            app_holder[0] = App
+            splash.after(0, splash.quit)
         except Exception as e:
             load_ok[0] = False
             exc_info[0] = (e, traceback.format_exc())
             splash.after(0, splash.quit)
 
     def _start_app(App):
-        splash.destroy()
+        """在主线程中启动主界面（必须在 splash.mainloop() 之后调用）"""
         try:
             App().run()
         except Exception as e:
@@ -79,6 +85,16 @@ try:
 
     threading.Thread(target=_load_main, daemon=True).start()
     splash.mainloop()
+
+    # splash 已退出：若加载成功，销毁加载窗并在主线程启动主界面
+    try:
+        splash.destroy()
+    except Exception:
+        pass
+
+    if load_ok[0] and app_holder[0] is not None:
+        _start_app(app_holder[0])
+        sys.exit(0)
 
     # 如果加载失败，回退到黑框模式
     if not load_ok[0]:

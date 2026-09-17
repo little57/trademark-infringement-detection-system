@@ -33,7 +33,29 @@ VERIFICATION_PROMPT = """你是一个极其严格的商标侵权检测专家。�
 - **卖家昵称**：{seller}
 
 ## ⚠️ 核心铁律（必须遵守）
-**只要不是正规出版的书籍/教材，标题含"中国传媒大学"或"中传"或"CUC"且商品属于服装/文具/饰品/纪念品/手机壳等周边类别的，一律判定为侵权，总分应在80分以上。**
+**只要不是正规出版的书籍/教材，标题含"中国传媒大学"或"中传"或"CUC"的，一律判定为侵权，总分应在80分以上。**
+（不再要求标题必须命中"服装/文具/饰品"等类别词 —— 非作品类、非服务类、非书籍，就判侵权）
+
+**只有以下情况一律判定为【不侵权】（is_infringement: false）**：
+- **作品/成果类**：实践作品、实习作品、实训作品、毕业作品、原创作品、作品集、文字报告、社会实践报告、调研报告、实习报告、课程作业、毕业论文、报告、作业等**交付内容成果的项目**
+- **虚拟服务类商品**：作品代做、报告代写、论文辅导、开题报告、查重降重、PPT代做、设计约稿、插画绘制、源码代写、编程代做、文案润色、排版翻译等**不提供实物**的服务型商品
+- **电子资源类**：电子版资料、模板素材、课件、字体包、网盘资源等**虚拟商品**
+- **书籍/教材**：正规出版的书籍、教材、教辅
+
+**⚠️ 特别注意——"作品/报告类优先"规则（必须遵守）**：
+只要标题中出现**任何**作品/报告类词（"实践作品""文字报告""作品集""实践报告""调研报告""报告""作业""论文"等）或服务类词（"代做""代写""设计""排版"等），就**一律判定为不侵权**。
+
+**不要**根据标题里同时出现的"笔记本""明信片""徽章""挂件"等词去推断"卖家实际卖的是实物"——那是**擅自推断**，禁止这样做。
+
+- `中国传媒大学 实践报告 封面 笔记本` → **不侵权**（含"实践报告"）
+- `中传 文字报告 明信片` → **不侵权**（含"文字报告"）
+- `中国传媒大学 实践作品 手环 文创` → **不侵权**（含"实践作品"）
+
+**只有标题中完全不含任何作品/报告/服务类词、且不是书籍**时，才判侵权 —— 此时**不需要**标题再含"徽章/笔记本"等类别词：
+- `中国传媒大学 徽章 周边 纪念品` → 侵权（按下方评分标准判定）
+- `中传 CUC 钥匙扣 定制` → 侵权
+- `中国传媒大学 校徽 摆件` → 侵权
+- `中国传媒大学 纪念品` → 侵权（即使没有具体类别词，也判侵权）
 
 ## 精细化评分标准（满分100分，精确到每一分）
 
@@ -47,6 +69,7 @@ VERIFICATION_PROMPT = """你是一个极其严格的商标侵权检测专家。�
 - 无任何校名/缩写/校徽相关词 → **0分**
 
 ### 2. 商品类别风险（满分25分，精确打分）
+- **非书籍、非作品、非服务的实体商品 → 保底20分起**
 - 服装类（T恤/卫衣/外套/帽子等） → **25分**
 - 箱包类（帆布包/手提袋/包等） → **23分**
 - 饰品/挂件类（钥匙扣/挂件/珐琅等） → **22分**
@@ -56,8 +79,9 @@ VERIFICATION_PROMPT = """你是一个极其严格的商标侵权检测专家。�
 - 杯子/水杯/马克杯 → **18分**
 - 家居类（抱枕/靠垫/坐垫等） → **16分**
 - 口罩/日用类 → **14分**
-- 其他周边/文创类 → **12分**
-- 非周边类商品（如食品、电器等） → **0分**
+- **其他周边/文创类，或标题未出现任何具体类别词** → **20分**
+  （★ 默认判侵权：非作品类、非服务类、非书籍即视为侵权商品，不必命中类别词）
+- 仅当标题明确显示是**书籍/教材/作品/服务/虚拟商品** → **0分**
 
 ### 3. 暗示官方关联程度（满分20分，精确打分）
 - 标题含"官方"+"正版"或"官方"+"授权"等多个强暗示词 → **20分**
@@ -227,6 +251,114 @@ def _parse_ai_response(content):
 
 
 
+# ========== 价格提取辅助确认 Prompt ==========
+
+PRICE_PROMPT = """你是电商页面数据提取专家。下面是淘宝/天猫商品卡片中"价格区域"的原始文本，其中**混有价格和销量/人气等干扰信息**。
+
+## 原始文本
+```
+{raw}
+```
+
+## 任务
+请从中提取出**商品单价**（人民币元），忽略所有销量/人气/评价/收藏等数字。
+
+## 关键区分规则
+- 价格：通常带 "¥"、有小数点（如 5.00 / 19.90），或在"￥/价格/现价"等词附近
+- **不是价格**：已售592件、月销1.02万+、102人付款、365条评价、889人收藏，这些都是销量/人气
+- 若原文是 "¥19.90 月销1.02万+"，价格是 **19.9**（不是 1.02 万，也不是 102）
+- 若只有价格没有销量，直接返回价格
+- 若完全没有价格信息，返回空字符串
+
+## 输出格式（严格遵守，不要任何解释）
+```json
+{{
+    "price": "19.9",
+    "confidence": 0-100的整数,
+    "reason": "20字以内的判断依据"
+}}
+```
+若无法确定价格，price 填 ""。"""
+
+
+def verify_price_by_ai(raw_text, progress_cb=None):
+    """
+    用AI辅助确认从"价格区域文本"中提取的价格。
+    用于本地规则提取不确定（或提取到空）时的兜底校验。
+
+    参数:
+        raw_text: 价格区域的原始文本（如 "¥19.90 月销1.02万+"）
+        progress_cb: 进度回调
+
+    返回:
+        dict: {
+            "price": str,   # 提取到的价格，失败为空串
+            "confidence": int,
+            "reason": str,
+            "ai_used": bool,
+        }
+    """
+    empty = {"price": "", "confidence": 0, "reason": "", "ai_used": False}
+    if not raw_text or not str(raw_text).strip():
+        return empty
+
+    # 优先环境变量，其次配置默认值
+    if not DEEPSEEK_API_KEY:
+        return empty
+
+    prompt = PRICE_PROMPT.format(raw=str(raw_text)[:300])
+    if progress_cb:
+        progress_cb(f"🤖 AI辅助确认价格: {str(raw_text)[:40]}...")
+
+    content = _call_deepseek_api(prompt, timeout=API_TIMEOUT)
+    if not content:
+        return empty
+
+    # 解析
+    import re
+    price_val, conf, reason = "", 0, ""
+    try:
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            data = json.loads(m.group(1)) if m else {}
+        price_val = str(data.get("price", "") or "").strip()
+        try:
+            conf = int(data.get("confidence", 0) or 0)
+        except (ValueError, TypeError):
+            conf = 0
+        reason = str(data.get("reason", "") or "")
+    except Exception:
+        return empty
+
+    # 校验 AI 返回值是否为合法价格（防AI幻觉）
+    if price_val:
+        m = re.fullmatch(r'\d{1,6}(?:\.\d{1,2})?', price_val)
+        if not m:
+            # 从返回文本里再抓一次数字
+            m2 = re.search(r'(\d{1,6}(?:\.\d{1,2})?)', price_val)
+            price_val = m2.group(1) if m2 else ""
+        if price_val:
+            try:
+                v = float(price_val)
+                if not (0 < v <= 999999):
+                    price_val = ""
+                else:
+                    # 规范化：去掉无意义的尾随零（128.0 -> 128, 19.90 -> 19.9）
+                    price_val = ('%f' % v).rstrip('0').rstrip('.')
+            except ValueError:
+                price_val = ""
+
+    if progress_cb:
+        if price_val:
+            progress_cb(f"   AI确认价格: {price_val}元 (置信度{conf}) - {reason}")
+        else:
+            progress_cb(f"   AI未能确认价格 - {reason}")
+
+    return {"price": price_val, "confidence": conf, "reason": reason, "ai_used": True}
+
+
 def verify_single_product(title, price="", seller="", location="", progress_cb=None):
     """
     对单个商品进行AI侵权验证
@@ -357,15 +489,27 @@ def ai_enhanced_judgment(title, price, location, rule_result, rule_reason, progr
     # 判断是否需要触发AI
     need_ai = False
 
+    # 【重要】以下"终局性否定理由"不允许 AI 推翻为侵权：
+    #   规则已确认该商品属于**作品/成果类或服务类**（作品类一律不判侵权、不截图），
+    #   或是书籍（不在检测范围），这是硬性边界，
+    #   AI 不应基于标题里的"笔记本/明信片"等词把它"救活"成侵权。
+    FINAL_NEGATIVE = [
+        "非实物产品",              # 实际理由前缀：作品类/服务类，如"非实物产品（作品类，命中"实践作品"）"
+        "作品商品",                # 兼容旧格式
+        "服务商品",                # 兼容旧格式
+        "书籍",                    # 书籍/教材，不在检测范围
+        "标题不含校名校徽关键词",     # 与校名无关
+    ]
+    if not rule_result and any(k in rule_reason for k in FINAL_NEGATIVE):
+        return rule_result, rule_reason, False
+
     if rule_result:
         # 规则判定为侵权，但置信度低 → AI确认（减少误判）
         if confidence in AI_TRIGGER_CONFIDENCE:
             need_ai = True
     else:
-        # 规则判定为不侵权，但原因是"标题不含校名校徽关键词"以外的原因
-        # 说明可能边界模糊，让AI再审
-        if "标题不含校名校徽关键词" not in rule_reason:
-            need_ai = True
+        # 规则判定为不侵权（非终局性理由）→ 边界模糊，让AI再审
+        need_ai = True
 
     if not need_ai:
         return rule_result, rule_reason, False

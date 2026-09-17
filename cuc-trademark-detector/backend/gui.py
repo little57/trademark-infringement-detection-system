@@ -638,7 +638,9 @@ class App:
             self.root.after(0, lambda: self._stopped())
         except Exception as exc:
             detail = traceback.format_exc()
-            self.root.after(0, lambda: self._failed(exc, detail))
+            # 注意：必须用默认参数捕获（exc 在 except 块结束后会被 Python 删除，
+            # 若直接在 lambda 中引用 exc 会抛 NameError，从而吞掉真实错误）
+            self.root.after(0, lambda e=exc, d=detail: self._failed(e, d))
 
     def _done(self, results, inf_cnt, book_cnt, total_scanned, excel_path, is_continue=False, start_page=0, max_pages=0):
         self._running = False
@@ -729,7 +731,7 @@ class App:
             self.root.after(0, lambda: self._ai_done(verified_results))
         except Exception as exc:
             detail = traceback.format_exc()
-            self.root.after(0, lambda: self._ai_failed(exc, detail))
+            self.root.after(0, lambda e=exc, d=detail: self._ai_failed(e, d))
 
     def _ai_done(self, verified_results):
         """AI验证完成后的UI更新"""
