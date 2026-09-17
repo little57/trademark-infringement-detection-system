@@ -136,7 +136,7 @@ cuc-trademark-detector/
 ├── .gitignore                 ← Git 忽略规则
 ├── backend/
 │   ├── config.py              ← DeepSeek API 配置（填入你的Key）
-│   ├── ai_verifier.py         ← AI侵权校验核心模块（DeepSeek调用）
+│   ├── ai_verifier.py         ← AI侵权校验核心模块（DeepSeek调用） 
 │   ├── gui.py                 ← 图形界面（含AI侵权校验按钮）
 │   └── detector.py            ← 检测核心（淘宝搜索+截图+报告）
 └── data/
